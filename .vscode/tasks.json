@@ -72,6 +72,16 @@
                 "Debug 2025"
             ],
             "group": "build"
+        },
+        {
+            "label": "Revit 2025 Release",
+            "command": "dotnet",
+            "args": [
+                "publish",
+                "-c",
+                "Release 2025"
+            ],
+            "group": "build"
         }
     ]
 }

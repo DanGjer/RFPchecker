@@ -8,11 +8,24 @@ public class DrofusRoom
     public string DrofusRoomId { get; set; } = string.Empty;
     public string DrofusRoomName { get; set; } = string.Empty;
     public string DrofusRoomFuncNo { get; set; } = string.Empty;
+    public string DrofusDrawingNo { get; set; } = string.Empty;
     public string DrofusOutletsNormal { get; set; } = string.Empty;
     public string DrofusOutletsEmergency { get; set; } = string.Empty;
     public string DrofusOutletsUps { get; set; } = string.Empty;
     public string DrofusOutletsData { get; set; } = string.Empty;
 
+}
+
+public class EquipmentRequirement
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("article_id_name")]
+    public string? ArticleIdName { get; set; }
+
+    [JsonPropertyName("room_id_room_func_no")]
+    public string? RoomIdRoomFuncNo { get; set; }
 }
 
 public class DrofusRoomResponse
@@ -25,6 +38,9 @@ public class DrofusRoomResponse
 
     [JsonPropertyName("room_func_no")]
     public object? RoomFuncNo { get; set; }
+
+    [JsonPropertyName("drawing_no")]
+    public object? DrawingNo { get; set; }
 
     [JsonPropertyName("room_data_20101610")]
     public object? RoomData20101610 { get; set; }

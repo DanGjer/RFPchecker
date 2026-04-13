@@ -81,6 +81,15 @@ A Revit extension for electrical outlet compliance verification in building spac
    - Text notes show outlet breakdown and compliance status
    - Summary message displays count of each status category
 
+## Release Build
+
+- Command: `dotnet publish -c "Release 2025"`
+- VS Code task: `Revit 2025 Release`
+- Output folder: `bin\Release 2025\net8.0-windows\publish`
+- Main assembly: `RFPchecker.2025.0.1.5.dll`
+
+The release publish includes the extension assembly and its required runtime dependencies.
+
 ## Text Note Format
 
 ```

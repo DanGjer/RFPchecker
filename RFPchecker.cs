@@ -1,3 +1,4 @@
+using dRofusClient.Occurrences;
 using dRofusClient.Rooms;
 
 namespace RFPchecker;
@@ -72,10 +73,43 @@ public class RFPcheckerCommand : IRevitExtension<AssistantArgs>
             var client = new dRofusClientFactory().Create(document);
 
         var queryRooms = Query.List()
-        .Select("id","name","room_func_no","room_data_20101610","room_data_20102210","room_data_20102310","room_data_21101010")
+        .Select("id","name","room_func_no","drawing_no","room_data_20101610","room_data_20102210","room_data_20102310","room_data_21101010")
         .Filter(Filter.Eq("room_group_type_4_group_id_name", "Bygg 76"));
 
+        var queryElReq = Query.List()
+        .Select("article_id_name","room_id_room_func_no")
+        .Filter(Filter.And(
+            Filter.Eq("room_id_room_group_type_4_group_id_name", "Bygg 76"),
+            Filter.Eq("article_id_dyn_article_13111310", true)));
+
+        var queryDataReq = Query.List()
+        .Select("article_id_name","room_id_room_func_no")
+        .Filter(Filter.And(
+            Filter.Eq("room_id_room_group_type_4_group_id_name", "Bygg 76"),
+            Filter.Eq("article_id_dyn_article_13131310", true)));
+
+
         var allRooms = client.GetRooms(queryRooms);
+        var allElReqs = client.GetOccurrences(queryElReq);
+        var allDataReqs = client.GetOccurrences(queryDataReq);
+
+        var debugJsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+        File.WriteAllText(Path.Combine(desktop, "debug_allElReqs.json"), System.Text.Json.JsonSerializer.Serialize(allElReqs, debugJsonOptions));
+        File.WriteAllText(Path.Combine(desktop, "debug_allDataReqs.json"), System.Text.Json.JsonSerializer.Serialize(allDataReqs, debugJsonOptions));
+
+        // Deserialize requirements into minimal DTOs
+        var elReqJson = System.Text.Json.JsonSerializer.Serialize(allElReqs);
+        var dataReqJson = System.Text.Json.JsonSerializer.Serialize(allDataReqs);
+        var elRequirements = System.Text.Json.JsonSerializer.Deserialize<List<EquipmentRequirement>>(elReqJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        var dataRequirements = System.Text.Json.JsonSerializer.Deserialize<List<EquipmentRequirement>>(dataReqJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+
+        // Merge and group requirements by room
+        var allRequirements = elRequirements.Concat(dataRequirements).ToList();
+        var requirementsByRoom = allRequirements
+            .Where(r => !string.IsNullOrWhiteSpace(r.RoomIdRoomFuncNo))
+            .GroupBy(r => r.RoomIdRoomFuncNo, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key!, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
         var allRoomsJson = System.Text.Json.JsonSerializer.Serialize(allRooms, new System.Text.Json.JsonSerializerOptions
         {
@@ -93,6 +127,7 @@ public class RFPcheckerCommand : IRevitExtension<AssistantArgs>
                 DrofusRoomId = room.Id.ToString(),
                 DrofusRoomName = room.Name ?? string.Empty,
                 DrofusRoomFuncNo = DrofusRoomResponse.AsText(room.RoomFuncNo),
+                DrofusDrawingNo = DrofusRoomResponse.AsText(room.DrawingNo),
                 DrofusOutletsNormal = DrofusRoomResponse.AsText(room.RoomData20101610),
                 DrofusOutletsEmergency = DrofusRoomResponse.AsText(room.RoomData20102210),
                 DrofusOutletsUps = DrofusRoomResponse.AsText(room.RoomData20102310),
@@ -116,7 +151,8 @@ public class RFPcheckerCommand : IRevitExtension<AssistantArgs>
         tx.Start();
 
         // Clear only prior notes created by this tool in the active view.
-        DeleteTextNotesOnLevel(document, activeView);
+        if (args.Mode != AnalysisMode.AnalyzeSelected)
+            DeleteTextNotesOnLevel(document, activeView);
 
         foreach (var space in listOfSpaces)
         {
@@ -220,7 +256,16 @@ public class RFPcheckerCommand : IRevitExtension<AssistantArgs>
                     RoomStatus.UndefinedOutlets => "Udef. uttak",
                     _ => "Unmatched"
                 };
-                var feedbackText = $"{space.Name} {space.Number}\nRFP Status: {statusLabel}\nN:{normalOutlets}/{requiredNormal} Nød:{emergencyOutlets}/{requiredEmergency} U:{upsOutlets}/{requiredUps} D:{dataOutlets}/{requiredData}\nDE:{dedicatedElkraftOutlets} DD:{dedicatedDataOutlets} MKT:{missingPowerTypeOutlets}";
+                var drawingNo = string.IsNullOrWhiteSpace(drofusMatch?.DrofusDrawingNo) ? "-" : drofusMatch.DrofusDrawingNo;
+                var feedbackText = $"{space.Name} / {drawingNo}\nRFP Status: {statusLabel}\nN:{normalOutlets}/{requiredNormal} Nød:{emergencyOutlets}/{requiredEmergency} U:{upsOutlets}/{requiredUps} D:{dataOutlets}/{requiredData}\nDE:{dedicatedElkraftOutlets} DD:{dedicatedDataOutlets} MKT:{missingPowerTypeOutlets}";
+                
+                // Append required equipment if any
+                if (requirementsByRoom.TryGetValue(space.DrofusRoomIdentifier, out var roomRequirements))
+                {
+                    var equipmentList = string.Join(", ", roomRequirements.Select(r => r.ArticleIdName));
+                    feedbackText += $"\nEquip: {equipmentList}";
+                }
+                
                 CreateSpaceTextNote(document, activeView, space.SpaceElementId, feedbackText);
             }
             catch { }
