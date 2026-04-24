@@ -17,6 +17,7 @@ public class RevitElectricalFixture
     public string FamilyName { get; set; } = string.Empty;
     public string TypeName { get; set; } = string.Empty;
     public string SUS_Antall_Stikkontaktuttak { get; set; } = string.Empty;
+    public string SUS_Antall_Datauttak { get; set; } = string.Empty;
     public string Krafttype { get; set; } = string.Empty;
     public string Formaal { get; set; } = string.Empty;
     public string SpaceName { get; set; } = string.Empty;
@@ -99,6 +100,7 @@ public static class RevitCollectors
                     FamilyName = fixture.Symbol?.FamilyName ?? fixture.Symbol?.Family?.Name ?? string.Empty,
                     TypeName = fixture.Symbol?.Name ?? string.Empty,
                     SUS_Antall_Stikkontaktuttak = GetParameterValueAsString(fixture.Symbol?.LookupParameter("SUS_Antall Stikkontaktuttak")),
+                    SUS_Antall_Datauttak = GetParameterValueAsString(fixture.Symbol?.LookupParameter("SUS_Antall Datauttak")),
                     Krafttype = GetParameterValueAsString(fixture.LookupParameter("Krafttype")),
                     Formaal = GetParameterValueAsString(fixture.LookupParameter("Formaal")),
                     SpaceName = space?.Name ?? string.Empty,
@@ -109,7 +111,8 @@ public static class RevitCollectors
                 };
             })
             .Where(fixture =>
-                !string.IsNullOrWhiteSpace(fixture.SUS_Antall_Stikkontaktuttak))
+                !string.IsNullOrWhiteSpace(fixture.SUS_Antall_Stikkontaktuttak) ||
+                !string.IsNullOrWhiteSpace(fixture.SUS_Antall_Datauttak))
             .ToList();
     }
 

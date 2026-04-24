@@ -16,18 +16,6 @@ public class DrofusRoom
 
 }
 
-public class EquipmentRequirement
-{
-    [JsonPropertyName("id")]
-    public int Id { get; set; }
-
-    [JsonPropertyName("article_id_name")]
-    public string? ArticleIdName { get; set; }
-
-    [JsonPropertyName("room_id_room_func_no")]
-    public string? RoomIdRoomFuncNo { get; set; }
-}
-
 public class DrofusRoomResponse
 {
     [JsonPropertyName("id")]

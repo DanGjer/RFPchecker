@@ -76,40 +76,7 @@ public class RFPcheckerCommand : IRevitExtension<AssistantArgs>
         .Select("id","name","room_func_no","drawing_no","room_data_20101610","room_data_20102210","room_data_20102310","room_data_21101010")
         .Filter(Filter.Eq("room_group_type_4_group_id_name", "Bygg 76"));
 
-        var queryElReq = Query.List()
-        .Select("article_id_name","room_id_room_func_no")
-        .Filter(Filter.And(
-            Filter.Eq("room_id_room_group_type_4_group_id_name", "Bygg 76"),
-            Filter.Eq("article_id_dyn_article_13111310", true)));
-
-        var queryDataReq = Query.List()
-        .Select("article_id_name","room_id_room_func_no")
-        .Filter(Filter.And(
-            Filter.Eq("room_id_room_group_type_4_group_id_name", "Bygg 76"),
-            Filter.Eq("article_id_dyn_article_13131310", true)));
-
-
         var allRooms = client.GetRooms(queryRooms);
-        var allElReqs = client.GetOccurrences(queryElReq);
-        var allDataReqs = client.GetOccurrences(queryDataReq);
-
-        var debugJsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-        File.WriteAllText(Path.Combine(desktop, "debug_allElReqs.json"), System.Text.Json.JsonSerializer.Serialize(allElReqs, debugJsonOptions));
-        File.WriteAllText(Path.Combine(desktop, "debug_allDataReqs.json"), System.Text.Json.JsonSerializer.Serialize(allDataReqs, debugJsonOptions));
-
-        // Deserialize requirements into minimal DTOs
-        var elReqJson = System.Text.Json.JsonSerializer.Serialize(allElReqs);
-        var dataReqJson = System.Text.Json.JsonSerializer.Serialize(allDataReqs);
-        var elRequirements = System.Text.Json.JsonSerializer.Deserialize<List<EquipmentRequirement>>(elReqJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-        var dataRequirements = System.Text.Json.JsonSerializer.Deserialize<List<EquipmentRequirement>>(dataReqJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-
-        // Merge and group requirements by room
-        var allRequirements = elRequirements.Concat(dataRequirements).ToList();
-        var requirementsByRoom = allRequirements
-            .Where(r => !string.IsNullOrWhiteSpace(r.RoomIdRoomFuncNo))
-            .GroupBy(r => r.RoomIdRoomFuncNo, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key!, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
         var allRoomsJson = System.Text.Json.JsonSerializer.Serialize(allRooms, new System.Text.Json.JsonSerializerOptions
         {
@@ -171,39 +138,49 @@ public class RFPcheckerCommand : IRevitExtension<AssistantArgs>
 
             foreach (var fixture in fixturesForSpace)
             {
-                var outletCount = ParseOutletCount(fixture.SUS_Antall_Stikkontaktuttak);
-                if (outletCount <= 0)
-                    continue;
-
-                if (string.IsNullOrWhiteSpace(fixture.Krafttype))
+                // Power outlets (SUS_Antall_Stikkontaktuttak)
+                var powerOutletCount = ParseOutletCount(fixture.SUS_Antall_Stikkontaktuttak);
+                if (powerOutletCount > 0)
                 {
-                    missingPowerTypeOutlets += outletCount;
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(fixture.Formaal))
-                {
-                    if (GetOutletType(fixture.Krafttype) == OutletType.Data)
-                        dedicatedDataOutlets += outletCount;
+                    if (string.IsNullOrWhiteSpace(fixture.Krafttype))
+                    {
+                        missingPowerTypeOutlets += powerOutletCount;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(fixture.Formaal))
+                    {
+                        if (GetOutletType(fixture.Krafttype) == OutletType.Data)
+                            dedicatedDataOutlets += powerOutletCount;
+                        else
+                            dedicatedElkraftOutlets += powerOutletCount;
+                    }
                     else
-                        dedicatedElkraftOutlets += outletCount;
-                    continue;
+                    {
+                        switch (GetOutletType(fixture.Krafttype))
+                        {
+                            case OutletType.Normal:
+                                normalOutlets += powerOutletCount;
+                                break;
+                            case OutletType.Emergency:
+                                emergencyOutlets += powerOutletCount;
+                                break;
+                            case OutletType.Ups:
+                                upsOutlets += powerOutletCount;
+                                break;
+                            case OutletType.Data:
+                                dataOutlets += powerOutletCount;
+                                break;
+                        }
+                    }
                 }
 
-                switch (GetOutletType(fixture.Krafttype))
+                // Data outlets (SUS_Antall_Datauttak)
+                var fixtureDataCount = ParseOutletCount(fixture.SUS_Antall_Datauttak);
+                if (fixtureDataCount > 0)
                 {
-                    case OutletType.Normal:
-                        normalOutlets += outletCount;
-                        break;
-                    case OutletType.Emergency:
-                        emergencyOutlets += outletCount;
-                        break;
-                    case OutletType.Ups:
-                        upsOutlets += outletCount;
-                        break;
-                    case OutletType.Data:
-                        dataOutlets += outletCount;
-                        break;
+                    if (!string.IsNullOrWhiteSpace(fixture.Formaal))
+                        dedicatedDataOutlets += fixtureDataCount;
+                    else
+                        dataOutlets += fixtureDataCount;
                 }
             }
 
@@ -258,14 +235,6 @@ public class RFPcheckerCommand : IRevitExtension<AssistantArgs>
                 };
                 var drawingNo = string.IsNullOrWhiteSpace(drofusMatch?.DrofusDrawingNo) ? "-" : drofusMatch.DrofusDrawingNo;
                 var feedbackText = $"{space.Name} / {drawingNo}\nRFP Status: {statusLabel}\nN:{normalOutlets}/{requiredNormal} Nød:{emergencyOutlets}/{requiredEmergency} U:{upsOutlets}/{requiredUps} D:{dataOutlets}/{requiredData}\nDE:{dedicatedElkraftOutlets} DD:{dedicatedDataOutlets} MKT:{missingPowerTypeOutlets}";
-                
-                // Append required equipment if any
-                if (requirementsByRoom.TryGetValue(space.DrofusRoomIdentifier, out var roomRequirements))
-                {
-                    var equipmentList = string.Join(", ", roomRequirements.Select(r => r.ArticleIdName));
-                    feedbackText += $"\nEquip: {equipmentList}";
-                }
-                
                 CreateSpaceTextNote(document, activeView, space.SpaceElementId, feedbackText);
             }
             catch { }
