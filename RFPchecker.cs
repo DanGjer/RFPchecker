@@ -74,7 +74,7 @@ public class RFPcheckerCommand : IRevitExtension<AssistantArgs>
 
         var queryRooms = Query.List()
         .Select("id","name","room_func_no","drawing_no","room_data_20101610","room_data_20102210","room_data_20102310","room_data_21101010")
-        .Filter(Filter.Eq("room_group_type_4_group_id_name", "Bygg 76"));
+        .Filter(Filter.StartsWith("architect_no", "76."));
 
         var allRooms = client.GetRooms(queryRooms);
 
